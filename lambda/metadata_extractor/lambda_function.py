@@ -3,7 +3,8 @@ import os
 import boto3
 from datetime import datetime
 
-s3 = boto3.client('s3')
+s3 = boto3.client("s3")
+
 
 def lambda_handler(event, context):
     """
@@ -57,5 +58,34 @@ def lambda_handler(event, context):
     # todo: write the metadata dict as JSON to s3 at processed/metadata/{filename}.json
     #       hint: s3.put_object(Bucket=bucket, Key=f"processed/metadata/{filename}.json",
     #             Body=json.dumps(metadata), ContentType='application/json')
+    for record in event.get("Records", []):
+        sns_message = record.get("Sns", {}).get("Message", "{}")
+        s3_event = json.loads(sns_message)
 
-    return {'statusCode': 200, 'body': 'metadata extracted'}
+        for s3_record in s3_event.get("Records", []):
+            bucket = s3_record["s3"]["bucket"]["name"]
+            key = s3_record["s3"]["object"]["key"]
+            size = s3_record["s3"]["object"].get("size", 0)
+            event_time = s3_record.get("eventTime", datetime.utcnow().isoformat() + "Z")
+
+            print(f"[METADATA] File: {key}")
+            print(f"[METADATA] Bucket: {bucket}")
+            print(f"[METADATA] Size: {size} bytes")
+            print(f"[METADATA] Upload Time: {event_time}")
+
+            metadata = {
+                "file": key,
+                "bucket": bucket,
+                "size": size,
+                "upload_time": event_time,
+            }
+
+            filename = os.path.splitext(key.split("/")[-1])[0]
+            s3.put_object(
+                Bucket=bucket,
+                Key=f"processed/metadata/{filename}.json",
+                Body=json.dumps(metadata),
+                ContentType="application/json",
+            )
+
+    return {"statusCode": 200, "body": "metadata extracted"}
